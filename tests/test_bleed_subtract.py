@@ -26,6 +26,7 @@ SRC = REPO_ROOT / "src"
 
 sys.path.insert(0, str(SRC))
 import bleed_subtract as bs  # noqa: E402
+from enhance import flatfield  # noqa: E402  - unmodified, used only to check colour survives
 
 # --- synthetic fixture geometry ---------------------------------------------
 W, H = 320, 240
@@ -141,8 +142,16 @@ def make_synthetic_pair(seed=7, bleed_attenuation=BLEED_ATTENUATION, true_dy=TRU
     return recto_bgr, verso_bgr, front_mask, bleed_mask
 
 
+def _result_ink(result_image):
+    """Grayscale 'ink' view of a bleed_subtract result image (now 3-channel
+    colour) for the recall/reduction metrics below, which only care about
+    darkness, not hue."""
+    gray = cv2.cvtColor(result_image, cv2.COLOR_BGR2GRAY)
+    return 255.0 - gray.astype(np.float64)
+
+
 def _front_recall(result_image, front_mask):
-    ink_out = 255.0 - result_image.astype(np.float64)
+    ink_out = _result_ink(result_image)
     return float((ink_out[front_mask] > STROKE_DETECT_THRESHOLD).mean())
 
 
@@ -152,7 +161,7 @@ def _pure_bleed_reduction(recto_bgr, result_image, front_mask, bleed_mask):
     deliberately-overlapping stroke doesn't distort this metric."""
     pure_bleed_mask = bleed_mask & ~front_mask
     before = bs._to_ink(recto_bgr, bs.DEFAULT_SIGMA)
-    after = 255.0 - result_image.astype(np.float64)
+    after = _result_ink(result_image)
     before_mean = before[pure_bleed_mask].mean()
     after_mean = after[pure_bleed_mask].mean()
     return float(1 - (after_mean / before_mean))
@@ -187,13 +196,48 @@ def test_default_strength_removes_bleed_and_preserves_front(synthetic_pair):
     )
 
 
-def test_output_is_grayscale_8bit_and_reproducible(synthetic_pair):
+def test_output_is_colour_8bit_and_reproducible(synthetic_pair):
     recto_bgr, verso_bgr, _, _ = synthetic_pair
     r1 = bs.remove_bleed_through(recto_bgr, verso_bgr, strength=GOOD_STRENGTH)
     r2 = bs.remove_bleed_through(recto_bgr, verso_bgr, strength=GOOD_STRENGTH)
     assert r1.image.dtype == np.uint8
-    assert r1.image.ndim == 2
+    assert r1.image.ndim == 3
+    assert r1.image.shape[2] == 3
     assert np.array_equal(r1.image, r2.image), "same input/params must give byte-identical output"
+
+
+def test_output_is_colour_and_retains_recto_hue_where_no_bleed(synthetic_pair):
+    """The bug this test guards against: bleed_subtract used to collapse
+    both scans to grayscale internally, so its output was single-channel -
+    which silently defeated enhance.py's blue-vs-bstar colour channel pick
+    downstream (bstar scored exactly 0.0 on a grayscale-only input)."""
+    recto_bgr, verso_bgr, front_mask, bleed_mask = synthetic_pair
+    result = bs.remove_bleed_through(recto_bgr, verso_bgr, strength=GOOD_STRENGTH)
+
+    # Structurally colour, not grayscale.
+    assert result.image.ndim == 3
+    assert result.image.shape[2] == 3
+
+    # Genuinely carries colour - not 3 channels that just happen to be
+    # identical (R=G=B), which would still "look" grayscale. Checked at
+    # actual ink pixels, not blank paper: flatfield() correctly normalizes
+    # uniform paper toward ~255 in every channel regardless of its original
+    # hue (that's illumination correction working as intended, not a colour
+    # bug), so blank paper alone wouldn't distinguish real colour from a
+    # flattened R=G=B regression.
+    pure_front = front_mask & ~bleed_mask
+    b = result.image[..., 0].astype(int)
+    r = result.image[..., 2].astype(int)
+    assert np.abs(b - r)[pure_front].mean() > 1.0, "output looks like flattened grayscale, not real colour"
+
+    # Where there is no bleed-through at all, only the recto's own colour
+    # should be present - i.e. the result should closely track the plain
+    # flat-fielded recto (no channel collapsed, nothing invented), since
+    # only the ALIGNED VERSO INK is ever subtracted.
+    safe_mask = ~bleed_mask
+    recto_flat = flatfield(recto_bgr, bs.DEFAULT_SIGMA)
+    diff = np.abs(result.image[safe_mask].astype(int) - recto_flat[safe_mask].astype(int))
+    assert diff.mean() < 2.0, "recto colour should be ~unchanged where there is no bleed to remove"
 
 
 # --- failure modes: prove the metrics actually mean something ---------------
@@ -264,7 +308,8 @@ def test_cli_writes_bleedremoved_file_and_never_touches_safe_best(tmp_path, synt
 
     written = cv2.imread(str(out_files[0]), cv2.IMREAD_UNCHANGED)
     assert written.dtype == np.uint8
-    assert written.ndim == 2
+    assert written.ndim == 3
+    assert written.shape[2] == 3
 
 
 def test_cli_refuses_bad_recto_file(tmp_path, synthetic_pair):

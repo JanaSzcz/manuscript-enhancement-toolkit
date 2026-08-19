@@ -23,10 +23,13 @@ Usage:
   python bleed_subtract.py --recto RECTO.png --verso VERSO.png \
       [--strength 1.0] [--sigma 40] [--search-window 20] [--outdir bleed_removed]
 
-Output: <recto-basename>_bleedremoved.png - a single-channel 8-bit grayscale
-PNG (lighting-corrected, bleed-corrected; NOT contrast-stretched). Feed it to
-src/enhance.py next for the full safe-enhance pass if you want that too.
-Never overwrites, and is never named the same as, a `*_safe_*_BEST.png` file.
+Output: <recto-basename>_bleedremoved.png - a 3-channel 8-bit BGR colour PNG
+(lighting-corrected, bleed-corrected; NOT contrast-stretched). Keeping this
+in colour matters: enhance.py picks between a blue-channel and an L*a*b* b*
+candidate downstream, and that pick is meaningless on a grayscale-only
+input. Feed this file to src/enhance.py next for the full safe-enhance pass
+if you want that too. Never overwrites, and is never named the same as, a
+`*_safe_*_BEST.png` file.
 """
 from __future__ import annotations
 
@@ -49,21 +52,37 @@ MIN_CALIBRATION_PIXELS = 200  # minimum verso-ink-present pixels needed to estim
 
 @dataclass
 class BleedRemovalResult:
-    image: np.ndarray    # uint8 grayscale, HxW - bleed-through subtracted
+    image: np.ndarray    # uint8 BGR colour, HxWx3 - bleed-through subtracted
     dy: int               # best-found vertical offset of the (flipped) verso relative to the recto
     dx: int               # best-found horizontal offset
     correlation: float    # correlation score at the chosen offset (higher = more confident alignment)
     k: float               # estimated bleed-through attenuation ratio actually used
 
 
-def _to_ink(bgr: np.ndarray, sigma: float) -> np.ndarray:
-    """Lighting-corrected 'ink' map: ~0 = paper, positive = darker than
-    paper. Reuses enhance.py's flatfield() unmodified purely to remove
-    uneven illumination before comparing recto and verso - this is NOT part
-    of, and does not alter, the enhancement pipeline itself."""
-    flat = flatfield(bgr, sigma)
-    gray = cv2.cvtColor(flat.astype(np.uint8), cv2.COLOR_BGR2GRAY)
+def _flatfield_bgr(bgr: np.ndarray, sigma: float) -> np.ndarray:
+    """Lighting-corrected BGR (float64), reusing enhance.py's flatfield()
+    unmodified purely to remove uneven illumination before comparing recto
+    and verso - this is NOT part of, and does not alter, the enhancement
+    pipeline itself. Kept in colour so the final subtraction can be applied
+    per-channel, preserving the recto's own colour information."""
+    return flatfield(bgr, sigma).astype(np.float64)
+
+
+def _ink_from_flat_bgr(flat_bgr: np.ndarray) -> np.ndarray:
+    """Grayscale 'ink' map from an already flat-fielded BGR array: ~0 =
+    paper, positive = darker than paper. Used only for the alignment search
+    and the k estimate, both of which stay single-channel by design - the
+    colour information is preserved separately and only re-enters when the
+    estimated bleed is subtracted, per-channel, from the flat-fielded BGR."""
+    gray = cv2.cvtColor(np.clip(flat_bgr, 0, 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
     return 255.0 - gray.astype(np.float64)
+
+
+def _to_ink(bgr: np.ndarray, sigma: float) -> np.ndarray:
+    """Convenience wrapper: lighting-corrected grayscale ink map straight
+    from a raw BGR image. Used for the alignment search / k estimate above,
+    and by the test suite to measure ink content of an image."""
+    return _ink_from_flat_bgr(_flatfield_bgr(bgr, sigma))
 
 
 def _overlap_slices(shape, dy: int, dx: int):
@@ -140,8 +159,13 @@ def remove_bleed_through(
             f"rescan or resize consistently before running this tool"
         )
 
-    recto_ink = _to_ink(recto_bgr, sigma)
-    verso_ink = _to_ink(verso_bgr, sigma)
+    # Alignment search and k-estimation stay single-channel (grayscale ink
+    # maps) - unchanged logic, just now derived from a colour-preserving
+    # flat-fielded base rather than immediately collapsing to grayscale.
+    recto_flat = _flatfield_bgr(recto_bgr, sigma)
+    verso_flat = _flatfield_bgr(verso_bgr, sigma)
+    recto_ink = _ink_from_flat_bgr(recto_flat)
+    verso_ink = _ink_from_flat_bgr(verso_flat)
     # Mirror: seen through the paper from the front, the verso's writing is
     # flipped left-right (top-bottom stays the same when a page is turned
     # like a book leaf).
@@ -161,11 +185,16 @@ def remove_bleed_through(
     else:
         k = 0.0  # not enough signal to trust an estimate - do nothing rather than guess
 
+    # Subtraction is now per-channel: the SAME estimated bleed amount
+    # (still one grayscale map - the bleed estimate itself is not colour-
+    # aware) is removed equally from B, G, and R, rather than collapsing
+    # the recto to one channel first. Wherever there's no aligned verso ink,
+    # predicted_bleed is ~0 and the recto's own colour passes through
+    # unchanged; only the bleed-explained darkening is subtracted.
     predicted_bleed = strength * k * aligned_verso_ink
-    result_ink = np.clip(recto_ink - predicted_bleed, 0.0, 255.0)
-    result_gray = np.clip(255.0 - result_ink, 0, 255).astype(np.uint8)
+    result_bgr = np.clip(recto_flat + predicted_bleed[:, :, None], 0.0, 255.0).astype(np.uint8)
 
-    return BleedRemovalResult(image=result_gray, dy=dy, dx=dx, correlation=correlation, k=k)
+    return BleedRemovalResult(image=result_bgr, dy=dy, dx=dx, correlation=correlation, k=k)
 
 
 def main():
