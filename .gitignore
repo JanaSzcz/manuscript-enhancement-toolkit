@@ -10,3 +10,6 @@ outputs/
 
 # OS cruft
 .DS_Store
+
+# Machine-local Claude Code settings (permission overrides etc.), not shared
+.claude/settings.local.json
