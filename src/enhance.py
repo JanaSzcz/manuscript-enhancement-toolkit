@@ -14,7 +14,8 @@ Usage:
   python enhance.py IMAGE.png [--sigma 40] [--clip 2.5] [--upscale 1.7]
                               [--outdir enhanced]
 """
-import argparse, os, cv2, numpy as np
+import argparse, os, sys, cv2, numpy as np
+from ingest import validate_file, IngestRejected
 
 def flatfield(bgr, sigma):
     return cv2.divide(bgr, cv2.GaussianBlur(bgr,(0,0),sigma), scale=255)
@@ -28,7 +29,15 @@ def main():
     ap.add_argument("image"); ap.add_argument("--sigma",type=float,default=40)
     ap.add_argument("--clip",type=float,default=2.5); ap.add_argument("--upscale",type=float,default=1.7)
     ap.add_argument("--outdir",default="enhanced")
-    a=ap.parse_args(); os.makedirs(a.outdir,exist_ok=True)
+    a=ap.parse_args()
+
+    try:
+        validate_file(a.image)
+    except IngestRejected as e:
+        print(f"REJECTED: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    os.makedirs(a.outdir,exist_ok=True)
     base=os.path.splitext(os.path.basename(a.image))[0]
     bgr=cv2.imread(a.image)
     flat=flatfield(bgr,a.sigma)

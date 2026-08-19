@@ -16,6 +16,7 @@ Notes:
 """
 import argparse, os, sys
 import pypdfium2 as pdfium
+from ingest import validate_file, IngestRejected
 
 def parse_pages(spec, n):
     if not spec: return list(range(n))
@@ -31,6 +32,13 @@ def main():
     ap.add_argument("pdf"); ap.add_argument("--dpi",type=int,default=400)
     ap.add_argument("--outdir",default="pages"); ap.add_argument("--pages",default="")
     a=ap.parse_args()
+
+    try:
+        validate_file(a.pdf)
+    except IngestRejected as e:
+        print(f"REJECTED: {e}", file=sys.stderr)
+        sys.exit(1)
+
     os.makedirs(a.outdir,exist_ok=True)
     doc=pdfium.PdfDocument(a.pdf)
     scale=a.dpi/72.0

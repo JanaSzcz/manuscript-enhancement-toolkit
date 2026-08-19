@@ -12,8 +12,9 @@ Usage:
   or fractional (0-1) coords with --frac:
   python verify_glyph.py IMAGE 0.02 0.44 0.30 0.12 --frac
 """
-import argparse, cv2, numpy as np
+import argparse, sys, cv2, numpy as np
 from PIL import Image, ImageDraw, ImageFont
+from ingest import validate_file, IngestRejected
 
 def enhance_safe(bgr):
     blur = cv2.GaussianBlur(bgr,(0,0),40)
@@ -49,6 +50,13 @@ def main():
     ap.add_argument("--frac",action="store_true"); ap.add_argument("--zoom",type=int,default=4)
     ap.add_argument("--out",default="glyph_check.png")
     a=ap.parse_args()
+
+    try:
+        validate_file(a.image)
+    except IngestRejected as e:
+        print(f"REJECTED: {e}", file=sys.stderr)
+        sys.exit(1)
+
     bgr=cv2.imread(a.image); H,W=bgr.shape[:2]
     if a.frac: x,y,w,h=int(a.x*W),int(a.y*H),int(a.w*W),int(a.h*H)
     else: x,y,w,h=map(int,(a.x,a.y,a.w,a.h))
