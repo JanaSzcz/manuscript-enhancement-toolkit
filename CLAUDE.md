@@ -61,13 +61,31 @@ matter how confident the result looks.
 3. **Compare — MANDATORY HUMAN CHECK.** Do not proceed past this stage on your
    own, under any circumstance.
    - Surface both the `*_safe_*_BEST.png` output and the untouched original.
-   - Explicitly ask the human to compare them and confirm the enhancement is
-     trustworthy before any reading is made from it.
-   - Wait for their answer. Do not run `verify_glyph.py` or interpret/read any
-     content in the same turn, even if the enhancement looks obviously fine.
-4. **Read / verify.** Only after the human confirms at Compare, use
-   `src/verify_glyph.py` on the contested word(s). Never jump here directly
-   from Convert & Enhance.
+   - Explicitly present the human with three options and wait for their
+     choice — never assume which one they want, and never default to option 1
+     just because the enhancement looks fine:
+     1. **Confirm** the enhancement is trustworthy → proceed to Stage 4
+        (Read / verify).
+     2. **Bleed-subtract** — if ink from the other side of the leaf is
+        bleeding through, run `src/bleed_subtract.py` on the ORIGINAL
+        recto+verso scans, never on the `*_safe_*_BEST.png`. Bleed removal
+        has to happen on the pre-enhancement scan, before CLAHE maximizes
+        contrast (and would amplify the bleed right along with everything
+        else). **This is a loop back, not a forward step:** bleed-subtract
+        the original recto+verso → re-run `src/enhance.py` on the resulting
+        `*_bleedremoved.png` → land back at the top of Stage 3 (Compare)
+        with the new enhanced output for the human to look at again. Do not
+        continue on to Stage 4 from here, and do not run bleed-subtract on
+        anything that has already been through `enhance.py`.
+     3. **Verify a specific word** — jump to Stage 4 for one contested
+        letter/word via `src/verify_glyph.py`, without confirming the whole
+        page's enhancement as trustworthy yet.
+   - Wait for their answer. Do not run `verify_glyph.py`, `src/bleed_subtract.py`,
+     or interpret/read any content in the same turn, even if the enhancement
+     looks obviously fine.
+4. **Read / verify.** Reached either by explicit confirmation at Compare, or
+   by choosing "verify a specific word" there. Use `src/verify_glyph.py` on
+   the contested word(s). Never jump here directly from Convert & Enhance.
 5. **Commit.** Only at a green baseline, and only with a commit message the
    human has approved. Never commit speculatively "to save a step."
 

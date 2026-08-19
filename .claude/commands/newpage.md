@@ -22,12 +22,22 @@ After Stage 1, continue exactly as `CLAUDE.md` specifies for Stages 2-5:
 2. Convert & Enhance (`src/pdf_to_png.py` then `src/enhance.py`, one chained
    action, no stop point between them).
 3. Compare — MANDATORY HUMAN CHECK. Surface the `*_safe_*_BEST.png` output
-   and the untouched original, explicitly ask the human to confirm the
-   enhancement is trustworthy, and stop. Do not proceed past this on your
-   own for any reason, and do not run `verify_glyph.py` or interpret any
-   content in the same turn.
-4. Read / verify — only after the human confirms at Stage 3, use
-   `src/verify_glyph.py` on the contested word(s).
+   and the untouched original, then explicitly present three options and
+   stop — do not assume which one the human wants, even if the enhancement
+   looks obviously fine:
+     1. Confirm it's trustworthy → go to Stage 4.
+     2. Bleed-subtract → run `src/bleed_subtract.py` on the ORIGINAL
+        recto+verso scans (never on the `*_safe_*_BEST.png` - bleed removal
+        must happen before contrast is maximized). This loops back, it does
+        not move forward: bleed-subtract → re-run `src/enhance.py` on the
+        resulting `*_bleedremoved.png` → return to the top of Stage 3 with
+        the new enhanced output. Do not proceed to Stage 4 from here.
+     3. Verify a specific word → jump to Stage 4 for just that word via
+        `src/verify_glyph.py`, without confirming the whole page yet.
+   Do not run `verify_glyph.py`, `src/bleed_subtract.py`, or interpret any
+   content in the same turn as presenting these options.
+4. Read / verify — reached by confirming at Stage 3, or by choosing "verify
+   a specific word" there. Use `src/verify_glyph.py` on the contested word(s).
 5. Commit — only at a green baseline, and only with a commit message the
    human has approved.
 
