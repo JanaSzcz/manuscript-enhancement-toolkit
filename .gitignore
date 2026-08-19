@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+
+# Generated pipeline output (never committed - see CLAUDE.md Data rules)
+outputs/
+
+# OS cruft
+.DS_Store
