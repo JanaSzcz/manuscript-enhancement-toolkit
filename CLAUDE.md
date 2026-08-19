@@ -41,6 +41,43 @@ Changing an invariant also requires updating this file in the same commit.**
 
 ---
 
+## Session workflow (the ritual)
+
+Any time a session converts, enhances, or reads an actual manuscript page —
+not general engineering work like writing tests or wiring code — it follows
+this exact sequence. The stages are ordered; none may be skipped, reordered,
+or merged into a single action. **Compare is a mandatory stop point:** reaching
+it ends that turn. Do not take the next stage's action in the same reply, no
+matter how confident the result looks.
+
+1. **Baseline.** Activate the venv, run `pytest -q`, report the result plainly.
+   - **Red → STOP.** Report the failure and wait for the human. Do not attempt
+     a fix or proceed to Convert & Enhance in the same turn unless asked.
+   - **Green → proceed automatically** to Convert & Enhance, without asking
+     first. A green baseline is standing permission for that one step.
+2. **Convert & Enhance.** Run `src/pdf_to_png.py`, then `src/enhance.py`, on
+   the page(s) in question. These two are one chained action — no stop point
+   between them.
+3. **Compare — MANDATORY HUMAN CHECK.** Do not proceed past this stage on your
+   own, under any circumstance.
+   - Surface both the `*_safe_*_BEST.png` output and the untouched original.
+   - Explicitly ask the human to compare them and confirm the enhancement is
+     trustworthy before any reading is made from it.
+   - Wait for their answer. Do not run `verify_glyph.py` or interpret/read any
+     content in the same turn, even if the enhancement looks obviously fine.
+4. **Read / verify.** Only after the human confirms at Compare, use
+   `src/verify_glyph.py` on the contested word(s). Never jump here directly
+   from Convert & Enhance.
+5. **Commit.** Only at a green baseline, and only with a commit message the
+   human has approved. Never commit speculatively "to save a step."
+
+**End-of-reply requirement:** every reply made while in this workflow states
+which stage the session is currently on and names the single next step. Never
+fold two stages into one action, and never advance past a mandatory stop point
+without the human's explicit answer in hand.
+
+---
+
 ## Enhancement-math change policy
 
 `src/enhance.py` (and the shared enhancement functions) **may be refactored,
