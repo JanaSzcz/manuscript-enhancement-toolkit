@@ -263,6 +263,11 @@ bomb image, and (d) a path-traversal filename.
 
 ## Data rules (manuscript scans)
 
+- **Source scans/PDFs live outside the repo entirely** (e.g. `~/manuscripts/`).
+  Only git-ignored renders under `outputs/` ever exist inside the project. This
+  holds regardless of licensing — even a fully license-cleared scan does not get
+  fed into the repo directly; it stays outside and is only ever pointed at via a
+  path argument.
 - Only **small, license-cleared, low-resolution crops** may live in `samples/`.
   Never commit full-resolution archive scans — the source images (e.g. Jagiellonian
   Library) carry reuse terms.
