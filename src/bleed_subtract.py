@@ -23,13 +23,21 @@ Usage:
   python bleed_subtract.py --recto RECTO.png --verso VERSO.png \
       [--strength 1.0] [--sigma 40] [--search-window 20] [--outdir bleed_removed]
 
-Output: <recto-basename>_bleedremoved.png - a 3-channel 8-bit BGR colour PNG
-(lighting-corrected, bleed-corrected; NOT contrast-stretched). Keeping this
-in colour matters: enhance.py picks between a blue-channel and an L*a*b* b*
-candidate downstream, and that pick is meaningless on a grayscale-only
-input. Feed this file to src/enhance.py next for the full safe-enhance pass
-if you want that too. Never overwrites, and is never named the same as, a
-`*_safe_*_BEST.png` file.
+Output: <recto-basename>_bleedremoved.png - a 3-channel 8-bit BGR colour PNG,
+bleed-corrected but deliberately left in the ORIGINAL scan's own lighting
+(NOT flat-fielded, NOT contrast-stretched). That's intentional: flatfield()
+is used internally to find the alignment and estimate how much to remove,
+but the estimated correction is rescaled back into the original's own
+illumination space before being written out. Feed this file to
+src/enhance.py or src/verify_glyph.py exactly as you would any other raw
+scan - they flat-field it themselves, exactly once. (An earlier version of
+this module wrote out an already-flat-fielded file; downstream flat-
+fielding it again was not idempotent and produced a contrast artifact
+unrelated to bleed removal - see the commit that fixed this.) Keeping the
+output in colour also matters on its own: enhance.py picks between a
+blue-channel and an L*a*b* b* candidate downstream, and that pick is
+meaningless on a grayscale-only input. Never overwrites, and is never named
+the same as, a `*_safe_*_BEST.png` file.
 """
 from __future__ import annotations
 
@@ -52,7 +60,7 @@ MIN_CALIBRATION_PIXELS = 200  # minimum verso-ink-present pixels needed to estim
 
 @dataclass
 class BleedRemovalResult:
-    image: np.ndarray    # uint8 BGR colour, HxWx3 - bleed-through subtracted
+    image: np.ndarray    # uint8 BGR colour, HxWx3 - bleed-through subtracted, in the ORIGINAL's own lighting (not flat-fielded)
     dy: int               # best-found vertical offset of the (flipped) verso relative to the recto
     dx: int               # best-found horizontal offset
     correlation: float    # correlation score at the chosen offset (higher = more confident alignment)
@@ -185,14 +193,28 @@ def remove_bleed_through(
     else:
         k = 0.0  # not enough signal to trust an estimate - do nothing rather than guess
 
-    # Subtraction is now per-channel: the SAME estimated bleed amount
-    # (still one grayscale map - the bleed estimate itself is not colour-
-    # aware) is removed equally from B, G, and R, rather than collapsing
-    # the recto to one channel first. Wherever there's no aligned verso ink,
+    # Subtraction is per-channel: the SAME estimated bleed amount (still one
+    # grayscale map - the bleed estimate itself is not colour-aware) is
+    # removed equally from B, G, and R, rather than collapsing the recto to
+    # one channel first. Wherever there's no aligned verso ink,
     # predicted_bleed is ~0 and the recto's own colour passes through
     # unchanged; only the bleed-explained darkening is subtracted.
     predicted_bleed = strength * k * aligned_verso_ink
-    result_bgr = np.clip(recto_flat + predicted_bleed[:, :, None], 0.0, 255.0).astype(np.uint8)
+
+    # Apply that correction in the ORIGINAL scan's own illumination space,
+    # not the flat-fielded one used for the search above. Writing out an
+    # already-flat-fielded file means any downstream tool that flat-fields
+    # again (enhance.py, verify_glyph.py both do) applies flatfield() a
+    # SECOND time - flatfield is not idempotent, and that double-application
+    # produces a systematic contrast shift unrelated to bleed removal.
+    # predicted_bleed is rescaled from flat-fielded ink-units back to raw
+    # pixel-units via the same local blur flatfield() itself divides by, so
+    # a single downstream flatfield pass reconstructs (to first order) the
+    # intended flat-fielded-and-bleed-corrected result directly, with no
+    # double-flatfielding artifact.
+    local_blur = cv2.GaussianBlur(recto_bgr.astype(np.float64), (0, 0), sigma)
+    raw_correction = predicted_bleed[:, :, None] * local_blur / 255.0
+    result_bgr = np.clip(recto_bgr.astype(np.float64) + raw_correction, 0, 255).astype(np.uint8)
 
     return BleedRemovalResult(image=result_bgr, dy=dy, dx=dx, correlation=correlation, k=k)
 
@@ -237,9 +259,11 @@ def main():
     print(f"best alignment: dy={result.dy} dx={result.dx}  correlation={result.correlation:.3f}")
     print(f"estimated bleed-through ratio k={result.k:.3f}  strength={a.strength}")
     print(f"wrote {out_path}")
-    print("This output is bleed-corrected only, NOT contrast-enhanced. Run "
-          "src/enhance.py on it next for the full safe-enhance pass, and "
-          "always confirm any reading against the untouched original.")
+    print("This output is bleed-corrected only, NOT contrast-enhanced, and is "
+          "left in the original scan's own lighting (not flat-fielded) so "
+          "downstream tools flat-field it exactly once. Run src/enhance.py "
+          "on it next for the full safe-enhance pass, and always confirm any "
+          "reading against the untouched original.")
 
 
 if __name__ == "__main__":

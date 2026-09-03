@@ -26,7 +26,6 @@ SRC = REPO_ROOT / "src"
 
 sys.path.insert(0, str(SRC))
 import bleed_subtract as bs  # noqa: E402
-from enhance import flatfield  # noqa: E402  - unmodified, used only to check colour survives
 
 # --- synthetic fixture geometry ---------------------------------------------
 W, H = 320, 240
@@ -143,11 +142,14 @@ def make_synthetic_pair(seed=7, bleed_attenuation=BLEED_ATTENUATION, true_dy=TRU
 
 
 def _result_ink(result_image):
-    """Grayscale 'ink' view of a bleed_subtract result image (now 3-channel
-    colour) for the recall/reduction metrics below, which only care about
-    darkness, not hue."""
-    gray = cv2.cvtColor(result_image, cv2.COLOR_BGR2GRAY)
-    return 255.0 - gray.astype(np.float64)
+    """Grayscale 'ink' view of a bleed_subtract result image, for the
+    recall/reduction metrics below (which only care about darkness, not
+    hue). The result is left in the ORIGINAL scan's own illumination space
+    (not pre-flat-fielded - see the double-flatfielding fix), so measuring
+    its ink content means flat-fielding it exactly once via bs._to_ink(),
+    the same way a real downstream consumer (enhance.py, verify_glyph.py)
+    would."""
+    return bs._to_ink(result_image, bs.DEFAULT_SIGMA)
 
 
 def _front_recall(result_image, front_mask):
@@ -196,6 +198,23 @@ def test_default_strength_removes_bleed_and_preserves_front(synthetic_pair):
     )
 
 
+def test_zero_strength_is_an_exact_noop(synthetic_pair):
+    """Regression test for the double-flatfielding fix: an earlier version
+    wrote the output in flat-fielded space, so even --strength 0 (literally
+    zero subtraction) came out different from the raw recto once a
+    downstream tool flat-fielded it again - a ~9-unit artifact on real page
+    data that had nothing to do with bleed removal. The output must now be
+    left in the recto's own illumination space, so strength=0 means the
+    correction is exactly zero everywhere and the result is byte-identical
+    to the raw recto."""
+    recto_bgr, verso_bgr, _, _ = synthetic_pair
+    result = bs.remove_bleed_through(recto_bgr, verso_bgr, strength=0.0)
+    assert np.array_equal(result.image, recto_bgr), (
+        "strength=0 must be an exact no-op - any difference means the output "
+        "isn't in the recto's own illumination space any more"
+    )
+
+
 def test_output_is_colour_8bit_and_reproducible(synthetic_pair):
     recto_bgr, verso_bgr, _, _ = synthetic_pair
     r1 = bs.remove_bleed_through(recto_bgr, verso_bgr, strength=GOOD_STRENGTH)
@@ -231,12 +250,12 @@ def test_output_is_colour_and_retains_recto_hue_where_no_bleed(synthetic_pair):
     assert np.abs(b - r)[pure_front].mean() > 1.0, "output looks like flattened grayscale, not real colour"
 
     # Where there is no bleed-through at all, only the recto's own colour
-    # should be present - i.e. the result should closely track the plain
-    # flat-fielded recto (no channel collapsed, nothing invented), since
-    # only the ALIGNED VERSO INK is ever subtracted.
+    # should be present - i.e. the result should closely track the RAW
+    # recto (the output is deliberately left in the original's own
+    # illumination space, not flat-fielded - see the double-flatfielding
+    # fix), since only the ALIGNED VERSO INK is ever subtracted.
     safe_mask = ~bleed_mask
-    recto_flat = flatfield(recto_bgr, bs.DEFAULT_SIGMA)
-    diff = np.abs(result.image[safe_mask].astype(int) - recto_flat[safe_mask].astype(int))
+    diff = np.abs(result.image[safe_mask].astype(int) - recto_bgr[safe_mask].astype(int))
     assert diff.mean() < 2.0, "recto colour should be ~unchanged where there is no bleed to remove"
 
 
