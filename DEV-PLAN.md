@@ -34,19 +34,34 @@ article, so correctness and provenance outrank speed.
 - venv + pinned `requirements.txt`. `outputs/` is git-ignored (confirmed). Source
   scans/PDFs kept **entirely outside the repo**.
 
-**Enhancement tuning status (as of 2026-09-13):**
+**Enhancement tuning status (as of 2026-09-14):**
 - Clip sweep done by eye: **5.0 too much**; candidates **2.5 / 3.0 / 3.5**; 3.0–3.5
-  look crisper but bring **more background noise**. No value committed as new default
-  yet.
-- Sigma sweep **now run**, via the app (see below) instead of the CLI. **Finding:
-  sigma has negligible effect on these pages** — 40–50 all look fine by eye. **Keep
-  sigma at the default 40**; changing it isn't earned.
-- **Candidate clip: ~3.0–3.5** (crisper than the current 2.5 default). Exact value
-  within that range is a background-noise tolerance call, not yet settled.
-- **These are eyeball candidates on one page (Attendo p21), PENDING CER
-  confirmation.** Do **not** change `enhance.py`'s defaults yet — the winning
-  config gets decided by CER (raw vs enhanced vs bleed-subtracted-enhanced against
-  ground truth; see blockers #3–#4 below), not by eye.
+  look crisper but bring **more background noise**. **Clip appears fairly stable
+  across pages** (the ~3.0–3.5 range looked good on every page tried so far,
+  clean or noisy). No value committed as new default yet.
+- Sigma sweep **now run**, via the app (see below) instead of the CLI. **Revised
+  finding: sigma is page-dependent, not a global constant.** On clean pages
+  (Attendo) it barely matters — 40–50 all look fine by eye. On stained/noisy
+  pages, sigma is **the key lever** for calming background noise without losing
+  faint ink.
+- **Design conclusion:** keep sigma as a **manually adjustable slider (40–80)**
+  in `app.py`, not collapse it to one fixed default — the right value is a
+  property of the *page's condition*, not of the pipeline. (`app.py` already
+  exposes it as a live slider; this finding is the justification for keeping it
+  that way rather than hardcoding a "winning" sigma.)
+- **Candidate clip: ~3.0–3.5** (crisper than the current 2.5 default, and the
+  more cross-page-stable of the two knobs). Exact value within that range is a
+  background-noise tolerance call, not yet settled.
+- **These are eyeball candidates from a small number of pages (Attendo p21 plus
+  the Gradio-tuner sweep), PENDING CER confirmation.** Do **not** change
+  `enhance.py`'s defaults yet — the winning config gets decided by CER (raw vs
+  enhanced vs bleed-subtracted-enhanced against ground truth; see blockers #3–#4
+  below), not by eye.
+- **For the CER run:** hand-tune sigma to each test page's own noise level first
+  (don't reuse one fixed sigma across pages), and **record the sigma value used
+  alongside the CER number** for that page — so "enhanced" is reported as
+  *per-page-tuned*, not as a fixed default. Clip can reasonably stay fixed at
+  the chosen candidate, given its cross-page stability.
 - Sharpen/upscale lever: **leave alone** (fabrication risk) unless clip+sigma prove
   insufficient, and only then with the DIFF check.
 - Tooling used: **`app.py` (v1)** — the Gradio drag-and-drop tuner with live
@@ -69,8 +84,10 @@ article, so correctness and provenance outrank speed.
    No longer blocks CER measurement of the bleed-subtracted-enhanced variant.
 
 2. ~~**Sigma sweep**~~ — **done** (see "Enhancement tuning status" above): sigma
-   doesn't matter for these pages, keep it at 40; clip candidate ~3.0–3.5, pending
-   CER before it becomes the new default.
+   turned out to be **page-dependent** (negligible on clean pages, the key lever
+   on stained/noisy ones) — so it stays a manual slider, not a fixed default;
+   clip candidate ~3.0–3.5 looks stable across pages, pending CER before it
+   becomes the new default.
 
 3. **Ground truth.**
    - **CER test page:** Biblioteka Jagiellońska, rkps (book) 3225, scanned page 10
@@ -101,9 +118,14 @@ article, so correctness and provenance outrank speed.
      each other, not hitting an absolute CER of zero. Abbreviations the machine
      can't produce count against all three variants equally, so they don't
      distort the comparison. No special Unicode normalization step is needed.
-   - **Tuning candidate under test:** clip ~3.0–3.5, sigma 40 (eyeball candidates
-     from the Gradio tuner — see "Enhancement tuning status" above — pending this
-     CER result before changing `enhance.py`'s defaults).
+   - **Tuning candidate under test:** clip ~3.0–3.5 (eyeball candidate from the
+     Gradio tuner, pending this CER result before changing `enhance.py`'s
+     default). Sigma is **not** a fixed candidate — per "Enhancement tuning
+     status" above, sigma is page-dependent, so hand-tune it to this specific
+     test page's noise level before running Transkribus, and **record the
+     sigma value used alongside the CER number** for the "enhanced" and
+     "bleed-subtracted-enhanced" rows, so the result is reported as
+     per-page-tuned rather than implying a fixed sigma default.
    - #1 (double-flat-field bug) is already fixed, so no longer a blocker here.
      Still blocked on #3 (ground truth). This is the citable result for the
      article.
@@ -172,8 +194,10 @@ Pick the thread; each has a ready prompt.
 > compute CER for each against that ground truth with jiwer.*
 
 **If running the sigma sweep:** done — see "Enhancement tuning status" above
-(run through `app.py`'s live sliders rather than the CLI). Sigma stays at 40;
-clip candidate ~3.0–3.5 is pending CER, not yet a default change.
+(run through `app.py`'s live sliders rather than the CLI). Finding: sigma is
+page-dependent (negligible on clean pages, the key lever on noisy ones) — stays
+a manual slider, not a fixed default. Clip candidate ~3.0–3.5 looks stable
+across pages, pending CER.
 
 ---
 
