@@ -34,15 +34,24 @@ article, so correctness and provenance outrank speed.
 - venv + pinned `requirements.txt`. `outputs/` is git-ignored (confirmed). Source
   scans/PDFs kept **entirely outside the repo**.
 
-**Enhancement tuning status:**
+**Enhancement tuning status (as of 2026-09-13):**
 - Clip sweep done by eye: **5.0 too much**; candidates **2.5 / 3.0 / 3.5**; 3.0–3.5
   look crisper but bring **more background noise**. No value committed as new default
   yet.
-- Sigma sweep **planned but not run**: fix clip at 3.0, sweep sigma 40 / 60 / 80 to
-  see if a larger flat-field blur calms the background noise. (Larger sigma =
-  smoother background; too large = uneven lighting returns.)
+- Sigma sweep **now run**, via the app (see below) instead of the CLI. **Finding:
+  sigma has negligible effect on these pages** — 40–50 all look fine by eye. **Keep
+  sigma at the default 40**; changing it isn't earned.
+- **Candidate clip: ~3.0–3.5** (crisper than the current 2.5 default). Exact value
+  within that range is a background-noise tolerance call, not yet settled.
+- **These are eyeball candidates on one page (Attendo p21), PENDING CER
+  confirmation.** Do **not** change `enhance.py`'s defaults yet — the winning
+  config gets decided by CER (raw vs enhanced vs bleed-subtracted-enhanced against
+  ground truth; see blockers #3–#4 below), not by eye.
 - Sharpen/upscale lever: **leave alone** (fabrication risk) unless clip+sigma prove
   insufficient, and only then with the DIFF check.
+- Tooling used: **`app.py` (v1)** — the Gradio drag-and-drop tuner with live
+  sigma/clip sliders — is what this sweep was actually run through, in place of
+  the CLI `clip_sweep.py`-style loop originally planned. See "App v1" below.
 
 ---
 
@@ -60,8 +69,9 @@ article, so correctness and provenance outrank speed.
    input. Needs a new test: "a `_bleedremoved.png` through `enhance.py` is
    flat-fielded exactly once."
 
-2. **Sigma sweep** (see above) — quick, do after/independent of the bug fix, to land
-   a candidate clip+sigma pair by eye.
+2. ~~**Sigma sweep**~~ — **done** (see "Enhancement tuning status" above): sigma
+   doesn't matter for these pages, keep it at 40; clip candidate ~3.0–3.5, pending
+   CER before it becomes the new default.
 
 3. **Ground truth** — hand-transcribe ~6–10 clean lines of one page (read-back
    discipline; note normalization rules). Blocks CER. Slow, human, do it fresh.
@@ -96,13 +106,11 @@ each shipped working and committed before the next.** First app ever — go slow
 - Review only two things in each diff: (a) does upload hit the gate, (b) does it
   import from `src/` rather than inline the math. UI/layout = vibecode freely.
 
-### App v1 — the tuning core (BUILD THIS FIRST)
-Upload a page (or a PDF, rendered once), two sliders (**sigma ~40–80**, **clip
-~2–5**), live compare **original vs enhanced**, **download** the enhanced PNG.
-Everything else hardcoded to defaults. This is the piece actually needed now to
-finish the sigma/clip tuning.
-- Expect slider lag (full-res enhance per change). If sluggish, preview on a
-  downscaled copy and only run full-res on download.
+### App v1 — the tuning core — **BUILT**
+`app.py`: drop a PNG page, two live sliders (**sigma 40–80**, **clip 2–5**),
+original vs enhanced side by side, save-to-`outputs/` button with sigma/clip
+baked into the filename. Used to run the sigma sweep (see "Enhancement tuning
+status" above). Everything else still hardcoded to defaults, as scoped.
 
 ### App v2 — add glyph verification
 A crop selector that runs `verify_glyph` and shows the green/red DIFF inline.
@@ -120,17 +128,10 @@ give it its own focused session and review the ordering against CLAUDE.md.
 
 Pick the thread; each has a ready prompt.
 
-**If continuing the app (likely):** build v1.
-> *Read CLAUDE.md, src/enhance.py, and src/ingest.py. Build app.py: a local Gradio
-> drag-and-drop app for tuning enhancement parameters. On image drop: pass the file
-> through validate_file() first (reject cleanly with a message if it fails), then
-> show original and enhanced side by side, with sliders for --sigma (40–80) and
-> --clip (2–5) that re-run enhancement live. Import the enhancement functions from
-> src/ — do NOT reimplement or copy the enhancement math, and do not add a
-> threshold/binarize step. Include a button to save the current enhanced image to
-> outputs/ and show the current sigma/clip values. Runs locally (python app.py). Then
-> tell me how to launch it. Build ONLY this (v1) — no bleed-through, no glyph
-> verification, no CER; those are later layers.*
+**If continuing the app (likely):** build v2 (app v1 is done — see above).
+> *Read CLAUDE.md and app.py. Add glyph verification (app v2): a crop selector
+> that runs src/verify_glyph.py and shows the green/red DIFF panel inline.
+> Additive, self-contained — import from src/, don't reimplement the DIFF math.*
 
 **If fixing the blocker first (recommended before CER):**
 > *Read CLAUDE.md and src/bleed_subtract.py and src/enhance.py. There is a double
@@ -143,10 +144,9 @@ Pick the thread; each has a ready prompt.
 > enhance.py is flat-fielded exactly once. Don't change the offset search, k formula,
 > or --strength semantics. Run pytest and show results.*
 
-**If running the sigma sweep:**
-> *Run the clip/sigma sweep on my raw rendered test page (outputs/pages, Attendo p21),
-> fixing clip at 3.0 and sweeping sigma at 40, 60, 80. Show the command, then run it
-> and tell me where each output landed.*
+**If running the sigma sweep:** done — see "Enhancement tuning status" above
+(run through `app.py`'s live sliders rather than the CLI). Sigma stays at 40;
+clip candidate ~3.0–3.5 is pending CER, not yet a default change.
 
 ---
 
