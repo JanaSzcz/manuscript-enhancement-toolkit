@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Manuscript Enhancement Toolkit"
+abstract: "A toolkit that enhances faded handwritten manuscript scans to reveal faint ink for AI-assisted transcription (Transkribus, Claude, ChatGPT), without fabricating or deleting strokes."
+authors:
+  - family-names: Shcharbina
+    given-names: Yana
+license: MIT
+repository-code: "https://github.com/JanaSzcz/manuscript-enhancement-toolkit"
+keywords:
+  - HTR
+  - digital palaeography
+  - image enhancement
+  - Transkribus
+  - manuscript transcription
+version: 0.1.0
+date-released: "2026-09-14"
