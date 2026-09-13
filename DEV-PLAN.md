@@ -57,17 +57,16 @@ article, so correctness and provenance outrank speed.
 
 ## Open blockers & threads (priority order)
 
-1. **[BLOCKER] Double flat-field bug.** `bleed_subtract.py` flat-fields internally;
-   `enhance.py` / `verify_glyph.py` flat-field *again* when fed a `_bleedremoved.png`.
-   Flat-field is non-idempotent → ~9-unit stroke-contrast shift, independent of
-   `--strength` (proven by a strength=0 control still showing the shift). **Must fix
-   before any CER measurement** — otherwise the general-vs-bleed comparison is
-   confounded by how many times flat-field ran, not just by bleed removal.
-   *Likely fix:* bleed module flat-fields internally only for k-estimation/alignment,
-   but applies subtraction to the **original colour recto** and outputs an
-   **un-flat-fielded** image; `enhance.py` then does the single flat-field on clean
-   input. Needs a new test: "a `_bleedremoved.png` through `enhance.py` is
-   flat-fielded exactly once."
+1. ~~**[BLOCKER] Double flat-field bug.**~~ — **fixed** (commit `4d3e6ba`, "fix:
+   bleed-subtract output stays in the recto's own illumination space").
+   `bleed_subtract.py` flat-fields internally for alignment/k-estimation, but now
+   applies the subtraction to, and writes out, the **original colour recto's own
+   illumination space** (not flat-fielded) — so `enhance.py` / `verify_glyph.py`
+   flat-field a `_bleedremoved.png` exactly once downstream, not twice. Guarded by
+   a regression test, `test_zero_strength_is_an_exact_noop`
+   (`tests/test_bleed_subtract.py`): `--strength 0` must be byte-identical to the
+   raw recto, which would fail again if double-flat-fielding ever crept back in.
+   No longer blocks CER measurement of the bleed-subtracted-enhanced variant.
 
 2. ~~**Sigma sweep**~~ — **done** (see "Enhancement tuning status" above): sigma
    doesn't matter for these pages, keep it at 40; clip candidate ~3.0–3.5, pending
@@ -105,9 +104,8 @@ article, so correctness and provenance outrank speed.
    - **Tuning candidate under test:** clip ~3.0–3.5, sigma 40 (eyeball candidates
      from the Gradio tuner — see "Enhancement tuning status" above — pending this
      CER result before changing `enhance.py`'s defaults).
-   - Blocked on #1 (bug fix — the double-flat-field bug must be fixed before the
-     bleed-subtracted variant is measured, or that variant's contrast is
-     confounded) **and** #3 (ground truth). This is the citable result for the
+   - #1 (double-flat-field bug) is already fixed, so no longer a blocker here.
+     Still blocked on #3 (ground truth). This is the citable result for the
      article.
 
 5. **The web app** (v1/v2/v3) — see plan below. The active new ambition.
@@ -162,16 +160,16 @@ Pick the thread; each has a ready prompt.
 > that runs src/verify_glyph.py and shows the green/red DIFF panel inline.
 > Additive, self-contained — import from src/, don't reimplement the DIFF math.*
 
-**If fixing the blocker first (recommended before CER):**
-> *Read CLAUDE.md and src/bleed_subtract.py and src/enhance.py. There is a double
-> flat-field bug: bleed_subtract flat-fields internally and enhance flat-fields again
-> on the _bleedremoved.png, and flat-field is non-idempotent (~9-unit stroke shift,
-> proven by a strength=0 control). Fix so flat-field happens exactly once: keep
-> internal flat-field only for k-estimation/alignment, but apply subtraction to the
-> original colour recto and output an un-flat-fielded colour image, so enhance.py
-> does the single flat-field. Add a test asserting a _bleedremoved.png through
-> enhance.py is flat-fielded exactly once. Don't change the offset search, k formula,
-> or --strength semantics. Run pytest and show results.*
+**If fixing the blocker first:** already done — see item #1 above (commit
+`4d3e6ba`, guarded by `test_zero_strength_is_an_exact_noop`). Not a next step.
+
+**If moving CER forward next (the actual remaining blocker):**
+> *Read DEV-PLAN.md's "Ground truth" and "CER measurement" sections (items #3–#4
+> under Open blockers & threads). Hand-transcribe the ground truth for BJ rkps
+> 3225, scanned p.10, per the approach recorded there (diplomatic, Unicode
+> abbreviations, cross-checked against Śnieżyńska-Stolot), then run raw / enhanced
+> / bleed-subtracted-enhanced through Transkribus (Medieval_Scripts_M2.4) and
+> compute CER for each against that ground truth with jiwer.*
 
 **If running the sigma sweep:** done — see "Enhancement tuning status" above
 (run through `app.py`'s live sliders rather than the CLI). Sigma stays at 40;
