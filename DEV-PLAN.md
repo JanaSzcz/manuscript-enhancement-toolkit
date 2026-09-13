@@ -73,13 +73,42 @@ article, so correctness and provenance outrank speed.
    doesn't matter for these pages, keep it at 40; clip candidate ~3.0–3.5, pending
    CER before it becomes the new default.
 
-3. **Ground truth** — hand-transcribe ~6–10 clean lines of one page (read-back
-   discipline; note normalization rules). Blocks CER. Slow, human, do it fresh.
+3. **Ground truth.**
+   - **CER test page:** Biblioteka Jagiellońska, rkps (book) 3225, scanned page 10
+     (manuscript s. 1) — birth horoscope of Kazimierz Jagiellończyk, cast 1427 by
+     Henryk Czech, copy likely by Jakub z Zalesia c. 1485. **Before measuring:**
+     confirm the rendered scan page actually corresponds to the folio
+     Śnieżyńska-Stolot transcribed.
+   - **Ground truth =** the fully-corrected human transcription, transcribed
+     diplomatically from the manuscript image with proper Unicode abbreviations,
+     cross-checked for reading correctness against Ewa Śnieżyńska-Stolot's
+     published transcription ("Horoskop Kazimierza Jagiellończyka – nowe źródło do
+     treści ideowych wawelskiego nagrobka króla"). Abbreviation marks are added
+     manually during post-machine editing, since Transkribus isn't expected to
+     reproduce them.
+   - **Methods-section framing:** "ground truth transcribed diplomatically from
+     the image, abbreviations preserved, cross-checked against
+     Śnieżyńska-Stolot's published edition."
+   - Blocks CER. Slow, human, do it fresh.
 
-4. **CER measurement** — raw vs enhanced vs bleed-subtracted-enhanced, same page,
-   same Transkribus model, `jiwer`. Blocked on #1 (bug fix) **and** #3 (ground
-   truth). This is the citable result for the article. (Method already written up in a
-   saved CER guide.)
+4. **CER measurement** — compute CER of the single human ground truth (#3) against
+   each enhancement variant's **raw** Transkribus output: raw vs enhanced vs
+   bleed-subtracted-enhanced, same page, same Transkribus model
+   (`Medieval_Scripts_M2.4`), `jiwer`.
+   - Score against the RAW Transkribus output of each variant — do **not**
+     hand-fix abbreviations into the machine outputs before scoring. Manual fixes
+     stay on the ground-truth side only, so the measured artifact stays untouched.
+   - **Why this is valid:** the goal is ranking the enhancement setups against
+     each other, not hitting an absolute CER of zero. Abbreviations the machine
+     can't produce count against all three variants equally, so they don't
+     distort the comparison. No special Unicode normalization step is needed.
+   - **Tuning candidate under test:** clip ~3.0–3.5, sigma 40 (eyeball candidates
+     from the Gradio tuner — see "Enhancement tuning status" above — pending this
+     CER result before changing `enhance.py`'s defaults).
+   - Blocked on #1 (bug fix — the double-flat-field bug must be fixed before the
+     bleed-subtracted variant is measured, or that variant's contrast is
+     confounded) **and** #3 (ground truth). This is the citable result for the
+     article.
 
 5. **The web app** (v1/v2/v3) — see plan below. The active new ambition.
 
