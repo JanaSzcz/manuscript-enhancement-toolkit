@@ -1,5 +1,7 @@
 # Manuscript HTR Toolkit
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A small toolkit for preparing faded handwritten manuscript scans (currently a
 1507 Latin astrological manuscript, with Latin annotations) so they can be
 transcribed by handwriting-recognition tools such as Claude, Transkribus, or
