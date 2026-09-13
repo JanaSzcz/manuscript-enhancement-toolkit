@@ -24,6 +24,24 @@ def levels(gray, lop=1, hip=99):
     lo,hi=np.percentile(gray,lop),np.percentile(gray,hip)
     return (np.clip((gray.astype(float)-lo)/(hi-lo),0,1)*255).astype(np.uint8)
 
+def enhance_page(bgr, sigma=40, clip=2.5):
+    """flat-field -> channel pick -> CLAHE -> levels. Pure function (array in,
+    array out): same input + params always yields the same bytes.
+
+    Returns (cand, best) where cand is {"blue": uint8 array, "bstar": uint8
+    array} (both channel candidates, so a caller can inspect either) and
+    best is the key of the higher-contrast one. This is the ONE place that
+    implements the safe-enhancement math; the CLI (main(), below) and
+    app.py both call it rather than reimplementing it.
+    """
+    flat=flatfield(bgr,sigma)
+    blue=flat[:,:,0]
+    bstar=255-cv2.cvtColor(flat,cv2.COLOR_BGR2Lab)[:,:,2]
+    cl=lambda ch: cv2.createCLAHE(clipLimit=clip,tileGridSize=(8,8)).apply(ch)
+    cand={"blue":levels(cl(blue)), "bstar":levels(cl(bstar))}
+    best=max(cand, key=lambda k: cand[k].std())
+    return cand, best
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("image"); ap.add_argument("--sigma",type=float,default=40)
@@ -40,15 +58,9 @@ def main():
     os.makedirs(a.outdir,exist_ok=True)
     base=os.path.splitext(os.path.basename(a.image))[0]
     bgr=cv2.imread(a.image)
-    flat=flatfield(bgr,a.sigma)
-
-    blue=flat[:,:,0]
-    bstar=255-cv2.cvtColor(flat,cv2.COLOR_BGR2Lab)[:,:,2]
-    cl=lambda ch: cv2.createCLAHE(clipLimit=a.clip,tileGridSize=(8,8)).apply(ch)
-    cand={"blue":levels(cl(blue)), "bstar":levels(cl(bstar))}
+    cand,best=enhance_page(bgr,a.sigma,a.clip)
 
     # pick higher-contrast channel automatically, but write both so you can judge
-    best=max(cand, key=lambda k: cand[k].std())
     for name,img in cand.items():
         tag="_BEST" if name==best else ""
         cv2.imwrite(os.path.join(a.outdir,f"{base}_safe_{name}{tag}.png"), img)
