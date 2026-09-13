@@ -182,6 +182,9 @@ def on_save(bgr, basename, sigma, clip):
     filename = f"{stem}_safe_{best}_sigma{sigma:g}_clip{clip:g}.png"
     out_path = os.path.join(OUTDIR, filename)
 
+    # cv2.imwrite picks the codec from the extension - ".png" writes a real,
+    # lossless 8-bit PNG (never WebP/JPEG), matching CLAUDE.md's "output stays
+    # 8-bit single-channel grayscale PNG" invariant and what Transkribus expects.
     ok = cv2.imwrite(out_path, enhanced)
     if not ok:
         return f"Save failed for {filename}."
@@ -205,8 +208,14 @@ with gr.Blocks(title="Manuscript Enhancement Tuner") as demo:
     )
 
     with gr.Row():
-        original_panel = gr.Image(label="Original", interactive=False)
-        enhanced_panel = gr.Image(label="Enhanced (safe)", interactive=False)
+        # format="png": gr.Image defaults its internal file format to "webp"
+        # for its own preview/download affordance (the small download icon on
+        # the component) - that's separate from the save_button below, but
+        # every path an image can leave this app through must stay lossless
+        # PNG (Transkribus expects PNG; WebP risks degrading faint ink), so
+        # override it here too.
+        original_panel = gr.Image(label="Original", interactive=False, format="png")
+        enhanced_panel = gr.Image(label="Enhanced (safe)", interactive=False, format="png")
 
     with gr.Row():
         sigma_slider = gr.Slider(
